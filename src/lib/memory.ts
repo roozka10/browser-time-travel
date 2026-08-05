@@ -54,18 +54,6 @@ function isWebMemory(url: string) {
   } catch { return false }
 }
 
-function hasTextMatch(item: Memory, terms: string[]) {
-  const haystack = `${item.title} ${item.domain} ${item.url}`.toLowerCase()
-  const words = haystack.split(/[^a-z0-9]+/).filter(Boolean)
-  return terms.some((term) => words.some((word) => {
-    if (word.includes(term) || term.includes(word)) return true
-    if (term.length < 4 || word.length < 4 || Math.abs(word.length - term.length) > 1) return false
-    let differences = 0
-    for (let index = 0; index < term.length; index += 1) if (term[index] !== word[index]) differences += 1
-    return differences <= 1
-  }))
-}
-
 function scoreItem(item: Memory, terms: string[], now = Date.now()) {
   const haystack = `${item.title} ${item.domain} ${item.url}`.toLowerCase()
   const words = haystack.split(/[^a-z0-9]+/).filter(Boolean)
@@ -102,10 +90,6 @@ export async function findMemories(query: string, excludedSites: string[]): Prom
     .filter((item) => !excludedSites.some((site) => getDomain(item.url!).includes(site.toLowerCase())))
     .filter((item) => !window.nighttimeOnly || (() => { const hour = new Date(item.lastVisitTime!).getHours(); return hour >= 20 || hour < 3 })())
     .map((item) => ({ id: item.id, url: item.url!, title: item.title!, domain: getDomain(item.url!), lastVisitTime: item.lastVisitTime!, visitCount: item.visitCount ?? 1 }))
-    // The fallback search sees recent history, but it must not become a
-    // random-tab launcher. When words were spoken, require at least one of
-    // those words to appear in the page title, domain, or URL.
-    .filter((item) => terms.length === 0 || hasTextMatch(item, terms))
     .map((item) => ({ ...item, score: scoreItem(item, terms) }))
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || b.lastVisitTime - a.lastVisitTime)
   return memories.slice(0, 5)

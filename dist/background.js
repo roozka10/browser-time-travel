@@ -1,5 +1,5 @@
 async function queueVoiceAction(command) {
-  const action = { command, id: Date.now(), createdAt: Date.now() }
+  const action = { command, id: Date.now() }
   await chrome.storage.session.set({ voiceAction: action })
   // The panel may still be mounting on the first click, so it also reads this
   // command from session storage when it becomes ready.
@@ -16,12 +16,8 @@ chrome.action.onClicked.addListener((tab) => {
   // first drops Chrome's user-gesture signal and prevents the panel opening.
   chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => {})
   void (async () => {
-    const { voiceState = 'idle', voiceStateUpdatedAt = 0 } = await chrome.storage.session.get(['voiceState', 'voiceStateUpdatedAt'])
-    // Never let a recording state survive long enough to affect a later click.
-    // A fresh click always begins a new transcript unless the microphone is
-    // actively recording right now.
-    const recordingIsLive = voiceState === 'recording' && Date.now() - voiceStateUpdatedAt < 120_000
-    const command = recordingIsLive ? 'finish' : 'start'
+    const { voiceState = 'idle' } = await chrome.storage.session.get('voiceState')
+    const command = voiceState === 'recording' || voiceState === 'ready' ? 'finish' : 'start'
     setRecordingBadge(command === 'start')
     await queueVoiceAction(command)
   })()
@@ -29,17 +25,14 @@ chrome.action.onClicked.addListener((tab) => {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'VOICE_STATE') {
-    chrome.storage.session.set({ voiceState: message.state, voiceStateUpdatedAt: Date.now() })
+    chrome.storage.session.set({ voiceState: message.state })
     setRecordingBadge(message.state === 'recording')
     return
   }
   if (message.type === 'GET_VOICE_ACTION') {
     chrome.storage.session.get('voiceAction').then(({ voiceAction }) => {
       chrome.storage.session.remove('voiceAction')
-      // Commands are only meant to bridge the short gap while a side panel is
-      // opening. Never replay an old "finish" command into a later session.
-      const isFresh = voiceAction && Date.now() - (voiceAction.createdAt ?? 0) < 8_000
-      sendResponse(isFresh ? voiceAction : null)
+      sendResponse(voiceAction ?? null)
     })
     return true
   }
