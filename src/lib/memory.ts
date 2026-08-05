@@ -54,18 +54,26 @@ function isWebMemory(url: string) {
   } catch { return false }
 }
 
-function scoreItem(item: Memory, terms: string[], now = Date.now()) {
-  const haystack = `${item.title} ${item.domain} ${item.url}`.toLowerCase()
-  const words = haystack.split(/[^a-z0-9]+/).filter(Boolean)
-  const nearMatch = (term: string) => words.some((word) => {
+function matchesTerm(term: string, words: string[]) {
+  return words.some((word) => {
     if (word.includes(term) || term.includes(word)) return true
     if (term.length < 4 || word.length < 4 || Math.abs(word.length - term.length) > 1) return false
     let differences = 0
     for (let index = 0; index < term.length; index += 1) if (term[index] !== word[index]) differences += 1
     return differences <= 1
   })
-  const matching = terms.reduce((total, term) => total + (nearMatch(term) ? 1 : 0), 0)
-  const titleMatches = terms.reduce((total, term) => total + (nearMatch(term) && item.title.toLowerCase().includes(term) ? 1 : 0), 0)
+}
+
+function matchedTerms(item: Memory, terms: string[]) {
+  const haystack = `${item.title} ${item.domain} ${item.url}`.toLowerCase()
+  const words = haystack.split(/[^a-z0-9]+/).filter(Boolean)
+  return terms.filter((term) => matchesTerm(term, words))
+}
+
+function scoreItem(item: Memory, terms: string[], now = Date.now()) {
+  const matching = matchedTerms(item, terms).length
+  const title = item.title.toLowerCase()
+  const titleMatches = terms.reduce((total, term) => total + (title.includes(term) ? 1 : 0), 0)
   const recency = Math.max(0, 1 - (now - item.lastVisitTime) / (30 * DAY))
   return matching * 28 + titleMatches * 16 + Math.min(item.visitCount, 12) * 2 + recency * 8
 }
@@ -90,6 +98,9 @@ export async function findMemories(query: string, excludedSites: string[]): Prom
     .filter((item) => !excludedSites.some((site) => getDomain(item.url!).includes(site.toLowerCase())))
     .filter((item) => !window.nighttimeOnly || (() => { const hour = new Date(item.lastVisitTime!).getHours(); return hour >= 20 || hour < 3 })())
     .map((item) => ({ id: item.id, url: item.url!, title: item.title!, domain: getDomain(item.url!), lastVisitTime: item.lastVisitTime!, visitCount: item.visitCount ?? 1 }))
+    // A broad local fallback is useful for imperfect speech recognition, but
+    // it must still match something the person actually said.
+    .filter((item) => terms.length === 0 || matchedTerms(item, terms).length > 0)
     .map((item) => ({ ...item, score: scoreItem(item, terms) }))
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || b.lastVisitTime - a.lastVisitTime)
   return memories.slice(0, 5)

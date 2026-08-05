@@ -4,7 +4,7 @@ import { findMemories } from './lib/memory'
 import './voice.css'
 
 type VoiceState = 'idle' | 'recording' | 'ready' | 'traveling' | 'error'
-type VoiceAction = { command: 'start' | 'finish'; id: number }
+type VoiceAction = { command: 'start' | 'finish'; id: number; createdAt?: number }
 const isExtension = typeof chrome !== 'undefined' && Boolean(chrome.runtime)
 
 function rewindLabel(timestamp: number) {
@@ -31,6 +31,7 @@ function VoicePanel() {
   const finalTranscript = useRef('')
   const transcriptCandidates = useRef<string[]>([])
   const shouldTravel = useRef(false)
+  const isTraveling = useRef(false)
   const keepListening = useRef(false)
   const lastAction = useRef(0)
   const stateRef = useRef<VoiceState>('idle')
@@ -46,31 +47,44 @@ function VoicePanel() {
   }, [])
 
   const travel = useCallback(async () => {
+    if (isTraveling.current) return
     const query = transcript.current.trim()
     if (!query) { setPhase('idle'); setMessage('I did not catch that. Try again.'); return }
+    isTraveling.current = true
     setDestinationTime(null)
     setPhase('traveling'); setMessage(`Finding “${query}”…`)
-    const saved = isExtension ? await chrome.storage.local.get('settings') : {}
-    const settings = (saved.settings ?? {}) as { excludedSites?: string[] }
-    // Chrome provides several transcription alternatives. Compare the best few
-    // against actual history, then pick the strongest matching page.
-    const queries = [...new Set([query, ...transcriptCandidates.current].filter(Boolean))].slice(0, 2)
-    const memories = (await Promise.all(queries.map((voiceQuery) => findMemories(voiceQuery, settings.excludedSites ?? []))))
-      .flat().sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || b.lastVisitTime - a.lastVisitTime)
-    if (!memories[0]) { setPhase('idle'); setMessage('No match yet. Say a site, title, or day.'); return }
-    setDestinationTime(memories[0].lastVisitTime)
-    setMessage('Memory found. Traveling back…')
-    const frames = makeRewindFrames(Date.now(), memories[0].lastVisitTime)
-    for (const frame of frames) {
-      setRewindTime(frame)
-      await new Promise((resolve) => window.setTimeout(resolve, 95))
+    try {
+      const saved = isExtension ? await chrome.storage.local.get('settings') : {}
+      const settings = (saved.settings ?? {}) as { excludedSites?: string[] }
+      // Compare the best few Chrome speech alternatives against the user's
+      // real, local history and open only the highest-scoring page.
+      const queries = [...new Set([query, ...transcriptCandidates.current].filter(Boolean))].slice(0, 2)
+      const memories = (await Promise.all(queries.map((voiceQuery) => findMemories(voiceQuery, settings.excludedSites ?? []))))
+        .flat().sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || b.lastVisitTime - a.lastVisitTime)
+      if (!memories[0]) { setPhase('idle'); setMessage('No match yet. Say a site, title, or day.'); return }
+      setDestinationTime(memories[0].lastVisitTime)
+      setMessage('Memory found. Traveling back…')
+      const frames = makeRewindFrames(Date.now(), memories[0].lastVisitTime)
+      for (const frame of frames) {
+        setRewindTime(frame)
+        await new Promise((resolve) => window.setTimeout(resolve, 150))
+      }
+      if (isExtension) await chrome.tabs.create({ url: memories[0].url })
+      else window.open(memories[0].url, '_blank', 'noopener,noreferrer')
+    } catch {
+      setMessage('Could not search your history. Try again.')
+    } finally {
+      transcript.current = ''
+      finalTranscript.current = ''
+      transcriptCandidates.current = []
+      shouldTravel.current = false
+      isTraveling.current = false
+      setPhase('idle')
     }
-    if (isExtension) await chrome.tabs.create({ url: memories[0].url })
-    else window.open(memories[0].url, '_blank', 'noopener,noreferrer')
-    setPhase('idle')
   }, [setPhase])
 
   const finish = useCallback(() => {
+    if (stateRef.current !== 'recording' && stateRef.current !== 'ready') return
     shouldTravel.current = true
     keepListening.current = false
     if (recognition.current && stateRef.current === 'recording') {
@@ -82,6 +96,7 @@ function VoicePanel() {
   }, [travel])
 
   const start = useCallback(() => {
+    if (stateRef.current === 'recording') return
     const Recognition = window.SpeechRecognition ?? window.webkitSpeechRecognition
     if (!Recognition) { setPhase('error'); setMessage('Voice recognition is not available in this Chrome profile.'); return }
     transcript.current = ''
@@ -144,6 +159,7 @@ function VoicePanel() {
 
   const handleAction = useCallback((action: VoiceAction | null) => {
     if (!action || action.id === lastAction.current) return
+    if (action.createdAt && Date.now() - action.createdAt > 10_000) return
     lastAction.current = action.id
     if (!hasConsent) return
     if (action.command === 'start') start()
@@ -153,10 +169,19 @@ function VoicePanel() {
   useEffect(() => {
     if (!isExtension) return
     chrome.storage.local.get('privacyConsent').then(({ privacyConsent }) => setHasConsent(privacyConsent === true))
-    const listener = (message: { type?: string; action?: VoiceAction }) => { if (message.type === 'VOICE_ACTION') handleAction(message.action ?? null) }
+    const listener = (message: { type?: string; action?: VoiceAction }) => {
+      if (message.type !== 'VOICE_ACTION') return
+      chrome.storage.session.remove('voiceAction')
+      handleAction(message.action ?? null)
+    }
     chrome.runtime.onMessage.addListener(listener)
     chrome.runtime.sendMessage({ type: 'GET_VOICE_ACTION' }, handleAction)
-    return () => { chrome.runtime.onMessage.removeListener(listener); keepListening.current = false; recognition.current?.stop() }
+    return () => {
+      chrome.runtime.onMessage.removeListener(listener)
+      keepListening.current = false
+      recognition.current?.stop()
+      setVoiceState('idle')
+    }
   }, [handleAction])
 
   const acceptConsent = async () => {
