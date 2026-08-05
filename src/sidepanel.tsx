@@ -39,6 +39,7 @@ function VoicePanel() {
   const [message, setMessage] = useState('Click the extension icon to start.')
   const [destinationTime, setDestinationTime] = useState<number | null>(null)
   const [rewindTime, setRewindTime] = useState('NOW')
+  const [memoryLabel, setMemoryLabel] = useState('')
   const [hasConsent, setHasConsent] = useState(!isExtension)
   const setPhase = useCallback((next: VoiceState) => {
     stateRef.current = next
@@ -63,6 +64,7 @@ function VoicePanel() {
         .flat().sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || b.lastVisitTime - a.lastVisitTime)
       if (!memories[0]) { setPhase('idle'); setMessage('No match yet. Say a site, title, or day.'); return }
       setDestinationTime(memories[0].lastVisitTime)
+      setMemoryLabel(memories[0].title || query)
       setMessage('Memory found. Traveling back…')
       const frames = makeRewindFrames(Date.now(), memories[0].lastVisitTime)
       for (const frame of frames) {
@@ -198,10 +200,11 @@ function VoicePanel() {
   return <main className="voice-panel">
     <header><span className="voice-logo"><i /></span><strong>Browser Time Travel</strong></header>
     <section className="voice-center">
-      {state === 'traveling' && <div className="time-rewind numeric"><span>REWINDING</span><strong key={rewindTime}>{destinationTime ? rewindTime : 'SEARCHING…'}</strong></div>}
+      {state === 'traveling' && <p className="travel-memory" title={memoryLabel}>{memoryLabel}</p>}
       <button className={`record-orb ${state}`} onClick={() => state === 'recording' || state === 'ready' ? finish() : start()} aria-label={state === 'recording' ? 'Stop recording' : 'Start recording'}><span /><i /><i /><i /></button>
-      <p className="voice-status">{state === 'recording' ? 'Listening' : state === 'traveling' ? 'Traveling back' : state === 'ready' ? 'Ready to travel' : 'Browser Time Travel'}</p>
-      <h1>{message}</h1>
+      {state === 'traveling'
+        ? <><p className="travel-found">Memory found. Traveling back…</p><div className="time-rewind numeric travel-time"><span>REWINDING</span><strong key={rewindTime}>{destinationTime ? rewindTime : 'SEARCHING…'}</strong></div></>
+        : <><p className="voice-status">{state === 'recording' ? 'Listening' : state === 'ready' ? 'Ready to travel' : 'Browser Time Travel'}</p><h1>{message}</h1></>}
     </section>
     <footer>Click the toolbar icon again when you’re done speaking.</footer>
   </main>
