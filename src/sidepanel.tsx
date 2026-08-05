@@ -4,7 +4,7 @@ import { findMemories } from './lib/memory'
 import './voice.css'
 
 type VoiceState = 'idle' | 'recording' | 'ready' | 'traveling' | 'error'
-type VoiceAction = { command: 'start' | 'finish'; id: number }
+type VoiceAction = { command: 'start' | 'finish'; id: number; createdAt?: number }
 const isExtension = typeof chrome !== 'undefined' && Boolean(chrome.runtime)
 
 function rewindLabel(timestamp: number) {
@@ -144,6 +144,9 @@ function VoicePanel() {
 
   const handleAction = useCallback((action: VoiceAction | null) => {
     if (!action || action.id === lastAction.current) return
+    // A toolbar click is a one-time action. Ignore an old action that Chrome
+    // may deliver when it restores or reconnects this side panel.
+    if (action.createdAt && Date.now() - action.createdAt > 8_000) return
     lastAction.current = action.id
     if (!hasConsent) return
     if (action.command === 'start') start()
@@ -153,7 +156,13 @@ function VoicePanel() {
   useEffect(() => {
     if (!isExtension) return
     chrome.storage.local.get('privacyConsent').then(({ privacyConsent }) => setHasConsent(privacyConsent === true))
-    const listener = (message: { type?: string; action?: VoiceAction }) => { if (message.type === 'VOICE_ACTION') handleAction(message.action ?? null) }
+    const listener = (message: { type?: string; action?: VoiceAction }) => {
+      if (message.type !== 'VOICE_ACTION') return
+      // If this mounted panel received the broadcast, consume the stored
+      // hand-off so it cannot run again after a panel reconnect.
+      chrome.storage.session.remove('voiceAction')
+      handleAction(message.action ?? null)
+    }
     chrome.runtime.onMessage.addListener(listener)
     chrome.runtime.sendMessage({ type: 'GET_VOICE_ACTION' }, handleAction)
     return () => { chrome.runtime.onMessage.removeListener(listener); keepListening.current = false; recognition.current?.stop() }

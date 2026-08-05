@@ -1,5 +1,5 @@
 async function queueVoiceAction(command) {
-  const action = { command, id: Date.now() }
+  const action = { command, id: Date.now(), createdAt: Date.now() }
   await chrome.storage.session.set({ voiceAction: action })
   // The panel may still be mounting on the first click, so it also reads this
   // command from session storage when it becomes ready.
@@ -32,7 +32,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'GET_VOICE_ACTION') {
     chrome.storage.session.get('voiceAction').then(({ voiceAction }) => {
       chrome.storage.session.remove('voiceAction')
-      sendResponse(voiceAction ?? null)
+      // Commands are only meant to bridge the short gap while a side panel is
+      // opening. Never replay an old "finish" command into a later session.
+      const isFresh = voiceAction && Date.now() - (voiceAction.createdAt ?? 0) < 8_000
+      sendResponse(isFresh ? voiceAction : null)
     })
     return true
   }
