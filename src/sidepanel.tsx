@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { findMemories } from './lib/memory'
 import './voice.css'
 
-type VoiceState = 'idle' | 'recording' | 'ready' | 'traveling' | 'error'
+type VoiceState = 'idle' | 'recording' | 'ready' | 'traveling' | 'found' | 'error'
 type VoiceAction = { command: 'start' | 'finish'; id: number; createdAt?: number }
 const isExtension = typeof chrome !== 'undefined' && Boolean(chrome.runtime)
 
@@ -52,6 +52,7 @@ function VoicePanel() {
     const query = transcript.current.trim()
     if (!query) { setPhase('idle'); setMessage('I did not catch that. Try again.'); return }
     isTraveling.current = true
+    let openedMemory = false
     setDestinationTime(null)
     setPhase('traveling'); setMessage(`Finding “${query}”…`)
     try {
@@ -73,6 +74,7 @@ function VoicePanel() {
       }
       if (isExtension) await chrome.tabs.create({ url: memories[0].url })
       else window.open(memories[0].url, '_blank', 'noopener,noreferrer')
+      openedMemory = true
     } catch {
       setMessage('Could not search your history. Try again.')
     } finally {
@@ -81,7 +83,7 @@ function VoicePanel() {
       transcriptCandidates.current = []
       shouldTravel.current = false
       isTraveling.current = false
-      setPhase('idle')
+      setPhase(openedMemory ? 'found' : 'idle')
     }
   }, [setPhase])
 
@@ -104,6 +106,8 @@ function VoicePanel() {
     transcript.current = ''
     finalTranscript.current = ''
     transcriptCandidates.current = []
+    setMemoryLabel('')
+    setDestinationTime(null)
     shouldTravel.current = false
     keepListening.current = true
     const next = new Recognition()
@@ -200,9 +204,9 @@ function VoicePanel() {
   return <main className="voice-panel">
     <header><span className="voice-logo"><i /></span><strong>Browser Time Travel</strong></header>
     <section className="voice-center">
-      {state === 'traveling' && <p className="travel-memory" title={memoryLabel}>{memoryLabel}</p>}
+      {(state === 'traveling' || state === 'found') && <p className="travel-memory" title={memoryLabel}>{memoryLabel}</p>}
       <button className={`record-orb ${state}`} onClick={() => state === 'recording' || state === 'ready' ? finish() : start()} aria-label={state === 'recording' ? 'Stop recording' : 'Start recording'}><span /><i /><i /><i /></button>
-      {state === 'traveling'
+      {state === 'traveling' || state === 'found'
         ? <><p className="travel-found">Memory found. Traveling back…</p><div className="time-rewind numeric travel-time"><span>REWINDING</span><strong key={rewindTime}>{destinationTime ? rewindTime : 'SEARCHING…'}</strong></div></>
         : <><p className="voice-status">{state === 'recording' ? 'Listening' : state === 'ready' ? 'Ready to travel' : 'Browser Time Travel'}</p><h1>{message}</h1></>}
     </section>
