@@ -1,8 +1,10 @@
 <svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="128" height="128" rx="34" fill="#F8FAFF"/>
-  <rect x="19" y="19" width="90" height="90" rx="28" fill="#E9EEFF" stroke="#C9D5FF" stroke-width="3"/>
-  <circle cx="64" cy="64" r="29" stroke="#5F7EF5" stroke-width="4"/>
-  <circle cx="64" cy="64" r="17" stroke="#5F7EF5" stroke-width="4"/>
-  <path d="M64 64V45M64 64L78 73" stroke="#5F7EF5" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="64" cy="64" r="5" fill="#5F7EF5"/>
+  <!-- Transparent 16px padding surrounds this 96×96 front-facing icon. -->
+  <defs><filter id="glow" x="8" y="8" width="112" height="112" filterUnits="userSpaceOnUse"><feGaussianBlur stdDeviation="2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+  <rect x="16" y="16" width="96" height="96" rx="27" fill="#EAF0FF"/>
+  <rect x="17.5" y="17.5" width="93" height="93" rx="25.5" stroke="#6D8DFF" stroke-width="3" filter="url(#glow)"/>
+  <circle cx="64" cy="64" r="30" stroke="#6D8DFF" stroke-width="4"/>
+  <circle cx="64" cy="64" r="18" stroke="#6D8DFF" stroke-width="4"/>
+  <path d="M64 64V45M64 64L78 73" stroke="#5677EF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="64" cy="64" r="5" fill="#5677EF"/>
 </svg>
