@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Browser Time Travel",
+  "version": "1.0.0",
+  "description": "Travel back through the moments you remember seeing online.",
+  "permissions": ["history", "storage", "tabs", "sidePanel"],
+  "minimum_chrome_version": "116",
+  "action": { "default_title": "Record a memory" },
+  "side_panel": { "default_path": "sidepanel.html" },
+  "background": { "service_worker": "background.js" },
+  "chrome_url_overrides": {},
+  "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
+}

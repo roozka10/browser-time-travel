@@ -1,0 +1,18 @@
+interface SpeechRecognitionAlternative { transcript: string; confidence: number }
+interface SpeechRecognitionResult { isFinal: boolean; length: number; [index: number]: SpeechRecognitionAlternative }
+interface SpeechRecognitionResultList { length: number; [index: number]: SpeechRecognitionResult }
+interface SpeechRecognitionEvent extends Event { resultIndex: number; results: SpeechRecognitionResultList }
+interface SpeechRecognitionErrorEvent extends Event { error: string }
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean
+  interimResults: boolean
+  maxAlternatives: number
+  lang: string
+  onresult: ((event: SpeechRecognitionEvent) => void) | null
+  onend: (() => void) | null
+  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null
+  start(): void
+  stop(): void
+}
+interface SpeechRecognitionConstructor { new (): SpeechRecognition }
+interface Window { SpeechRecognition?: SpeechRecognitionConstructor; webkitSpeechRecognition?: SpeechRecognitionConstructor }
