@@ -31,6 +31,7 @@ function VoicePanel() {
   const finalTranscript = useRef('')
   const transcriptCandidates = useRef<string[]>([])
   const shouldTravel = useRef(false)
+  const isTraveling = useRef(false)
   const keepListening = useRef(false)
   const lastAction = useRef(0)
   const stateRef = useRef<VoiceState>('idle')
@@ -46,8 +47,10 @@ function VoicePanel() {
   }, [])
 
   const travel = useCallback(async () => {
+    if (isTraveling.current) return
     const query = transcript.current.trim()
     if (!query) { setPhase('idle'); setMessage('I did not catch that. Try again.'); return }
+    isTraveling.current = true
     setDestinationTime(null)
     setPhase('traveling'); setMessage(`Finding “${query}”…`)
     const saved = isExtension ? await chrome.storage.local.get('settings') : {}
@@ -57,7 +60,7 @@ function VoicePanel() {
     const queries = [...new Set([query, ...transcriptCandidates.current].filter(Boolean))].slice(0, 2)
     const memories = (await Promise.all(queries.map((voiceQuery) => findMemories(voiceQuery, settings.excludedSites ?? []))))
       .flat().sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || b.lastVisitTime - a.lastVisitTime)
-    if (!memories[0]) { setPhase('idle'); setMessage('No match yet. Say a site, title, or day.'); return }
+    if (!memories[0]) { isTraveling.current = false; setPhase('idle'); setMessage('No match yet. Say a site, title, or day.'); return }
     setDestinationTime(memories[0].lastVisitTime)
     setMessage('Memory found. Traveling back…')
     const frames = makeRewindFrames(Date.now(), memories[0].lastVisitTime)
@@ -67,10 +70,15 @@ function VoicePanel() {
     }
     if (isExtension) await chrome.tabs.create({ url: memories[0].url })
     else window.open(memories[0].url, '_blank', 'noopener,noreferrer')
+    transcript.current = ''
+    finalTranscript.current = ''
+    transcriptCandidates.current = []
+    isTraveling.current = false
     setPhase('idle')
   }, [setPhase])
 
   const finish = useCallback(() => {
+    if (stateRef.current !== 'recording' && stateRef.current !== 'ready') return
     shouldTravel.current = true
     keepListening.current = false
     if (recognition.current && stateRef.current === 'recording') {

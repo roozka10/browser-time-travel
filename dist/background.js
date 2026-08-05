@@ -16,8 +16,12 @@ chrome.action.onClicked.addListener((tab) => {
   // first drops Chrome's user-gesture signal and prevents the panel opening.
   chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => {})
   void (async () => {
-    const { voiceState = 'idle' } = await chrome.storage.session.get('voiceState')
-    const command = voiceState === 'recording' || voiceState === 'ready' ? 'finish' : 'start'
+    const { voiceState = 'idle', voiceStateUpdatedAt = 0 } = await chrome.storage.session.get(['voiceState', 'voiceStateUpdatedAt'])
+    // Never let a recording state survive long enough to affect a later click.
+    // A fresh click always begins a new transcript unless the microphone is
+    // actively recording right now.
+    const recordingIsLive = voiceState === 'recording' && Date.now() - voiceStateUpdatedAt < 120_000
+    const command = recordingIsLive ? 'finish' : 'start'
     setRecordingBadge(command === 'start')
     await queueVoiceAction(command)
   })()
@@ -25,7 +29,7 @@ chrome.action.onClicked.addListener((tab) => {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'VOICE_STATE') {
-    chrome.storage.session.set({ voiceState: message.state })
+    chrome.storage.session.set({ voiceState: message.state, voiceStateUpdatedAt: Date.now() })
     setRecordingBadge(message.state === 'recording')
     return
   }
